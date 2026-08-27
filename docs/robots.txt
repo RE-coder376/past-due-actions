@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://re-coder376.github.io/past-due-actions/sitemap.xml

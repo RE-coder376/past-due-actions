@@ -1,0 +1,877 @@
+<title>"Past-due actions found; something may be wrong" — what the Action Scheduler warning means and how to fix it</title>
+<meta name="description" content="WooCommerce says past-due actions were found and nothing else. Here is what the warning means, what it breaks, the six causes, and how to tell which one you have.">
+
+<style>
+  :root {
+    --ground:      #FBFBFD;
+    --surface:     #FFFFFF;
+    --surface-alt: #F3F4F9;
+    --ink:         #14161C;
+    --ink-soft:    #363A47;
+    --muted:       #5B6070;
+    --rule:        #E3E4EC;
+    --rule-strong: #C9CBD9;
+    --accent:      #3B3FA8;
+    --accent-soft: #EEEEFA;
+    --warn:        #B26A00;
+    --warn-soft:   #FDF3E2;
+    --ok:          #1F7A4D;
+    --crit:        #A32B32;
+
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+
+    --measure: 66ch;
+    --step--1: 0.815rem;
+    --step-0:  1.0625rem;
+    --step-1:  1.25rem;
+    --step-2:  1.5rem;
+    --step-3:  clamp(1.6rem, 1.15rem + 2.1vw, 2rem);
+    --step-4:  clamp(2rem, 1.25rem + 3.6vw, 2.75rem);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground:      #101219;
+      --surface:     #171A23;
+      --surface-alt: #1D212C;
+      --ink:         #E8E9F0;
+      --ink-soft:    #C3C6D4;
+      --muted:       #8E93A6;
+      --rule:        #262A36;
+      --rule-strong: #3A3F4F;
+      --accent:      #9DA3FF;
+      --accent-soft: #1C1F33;
+      --warn:        #E0A040;
+      --warn-soft:   #2A2113;
+      --ok:          #4FBE87;
+      --crit:        #F0868C;
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --ground:      #101219;
+    --surface:     #171A23;
+    --surface-alt: #1D212C;
+    --ink:         #E8E9F0;
+    --ink-soft:    #C3C6D4;
+    --muted:       #8E93A6;
+    --rule:        #262A36;
+    --rule-strong: #3A3F4F;
+    --accent:      #9DA3FF;
+    --accent-soft: #1C1F33;
+    --warn:        #E0A040;
+    --warn-soft:   #2A2113;
+    --ok:          #4FBE87;
+    --crit:        #F0868C;
+  }
+
+  * { box-sizing: border-box; }
+
+  /* Grid and flex children default to a min-content floor, so one long line of
+     code inside a track widens the whole page instead of scrolling in place.
+     Every container that can hold a <pre> or a table has to opt out of that. */
+  .cause, .cause .body, .block, .fork, .outcome, section, .qa { min-width: 0; }
+
+  body {
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: var(--step-0);
+    line-height: 1.65;
+    margin: 0;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap {
+    max-width: 46rem;
+    margin: 0 auto;
+    padding: clamp(2rem, 5vw, 4.5rem) clamp(1.1rem, 4vw, 2rem) 6rem;
+    display: flex;
+    flex-direction: column;
+    gap: 3.25rem;
+  }
+
+  h1, h2, h3 {
+    text-wrap: balance;
+    letter-spacing: -0.021em;
+    line-height: 1.18;
+    margin: 0;
+    font-weight: 700;
+  }
+  h1 { font-size: var(--step-4); letter-spacing: -0.032em; }
+  h2 { font-size: var(--step-3); }
+  h3 { font-size: var(--step-1); letter-spacing: -0.012em; }
+
+  p, ul, ol { margin: 0; max-width: var(--measure); }
+  ul, ol { padding-left: 1.35rem; }
+  li { margin-block: 0.4rem; }
+
+  a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+  a:focus-visible, .btn:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 3px;
+    border-radius: 2px;
+  }
+
+  code, kbd, .mono { font-family: var(--mono); font-size: 0.895em; }
+  p code, li code {
+    background: var(--surface-alt);
+    border: 1px solid var(--rule);
+    border-radius: 3px;
+    padding: 0.08em 0.34em;
+    overflow-wrap: break-word;
+  }
+
+  pre {
+    font-family: var(--mono);
+    font-size: var(--step--1);
+    line-height: 1.6;
+    background: var(--surface-alt);
+    border: 1px solid var(--rule);
+    border-radius: 6px;
+    padding: 0.95rem 1.1rem;
+    margin: 0;
+    overflow-x: auto;
+  }
+
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: var(--step--1);
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin: 0;
+  }
+
+  /* ---- hero: the notice they just read, quoted back ---- */
+
+  .hero { display: flex; flex-direction: column; gap: 1.5rem; }
+
+  .notice {
+    background: var(--warn-soft);
+    border: 1px solid var(--rule);
+    border-left: 4px solid var(--warn);
+    border-radius: 4px;
+    padding: 1rem 1.15rem;
+    font-family: var(--mono);
+    font-size: var(--step--1);
+    line-height: 1.55;
+    color: var(--ink-soft);
+    overflow-x: auto;
+  }
+  .notice strong { color: var(--ink); font-weight: 600; }
+
+  .standfirst {
+    font-size: var(--step-1);
+    line-height: 1.55;
+    color: var(--ink-soft);
+    max-width: var(--measure);
+  }
+
+  /* ---- the fork test ---- */
+
+  .fork {
+    background: var(--surface);
+    border: 1px solid var(--rule-strong);
+    border-radius: 8px;
+    padding: clamp(1.25rem, 3vw, 1.75rem);
+    display: flex;
+    flex-direction: column;
+    gap: 1.1rem;
+  }
+  .fork-outcomes {
+    display: grid;
+    gap: 0.85rem;
+    grid-template-columns: repeat(auto-fit, minmax(min(15rem, 100%), 1fr));
+  }
+  .outcome {
+    border: 1px solid var(--rule);
+    border-radius: 6px;
+    padding: 0.9rem 1rem;
+    background: var(--surface-alt);
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+  }
+  .outcome p { font-size: var(--step--1); color: var(--ink-soft); margin: 0; }
+  .outcome .verdict {
+    font-family: var(--mono);
+    font-size: var(--step--1);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    font-weight: 600;
+  }
+  .outcome.sched .verdict { color: var(--accent); }
+  .outcome.fail  .verdict { color: var(--crit); }
+
+  /* ---- causes ---- */
+
+  .causes { display: flex; flex-direction: column; gap: 1.25rem; }
+
+  .cause {
+    border: 1px solid var(--rule);
+    border-radius: 8px;
+    background: var(--surface);
+    padding: clamp(1.15rem, 3vw, 1.6rem);
+    display: grid;
+    grid-template-columns: 2.4rem minmax(0, 1fr);
+    gap: 0.35rem 1rem;
+    align-items: start;
+  }
+  .cause > .num {
+    grid-row: 1 / span 3;
+    font-family: var(--mono);
+    font-size: var(--step-1);
+    font-weight: 600;
+    color: var(--accent);
+    background: var(--accent-soft);
+    border-radius: 5px;
+    text-align: center;
+    padding: 0.15rem 0;
+    font-variant-numeric: tabular-nums;
+  }
+  .cause h3 { grid-column: 2; }
+  .cause .body {
+    grid-column: 2;
+    display: flex;
+    flex-direction: column;
+    gap: 0.8rem;
+    margin-top: 0.55rem;
+  }
+  .freq {
+    grid-column: 2;
+    font-family: var(--mono);
+    font-size: var(--step--1);
+    color: var(--muted);
+    letter-spacing: 0.03em;
+  }
+
+  .label {
+    font-family: var(--mono);
+    font-size: var(--step--1);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+    display: block;
+    margin-bottom: 0.25rem;
+  }
+
+  .block { display: flex; flex-direction: column; }
+
+  /* ---- table ---- */
+
+  .scroller { overflow-x: auto; border: 1px solid var(--rule); border-radius: 8px; }
+  table { border-collapse: collapse; width: 100%; font-size: var(--step--1); }
+  th, td { text-align: left; padding: 0.7rem 0.9rem; border-bottom: 1px solid var(--rule); }
+  th { font-weight: 600; background: var(--surface-alt); white-space: nowrap; }
+  tbody tr:last-child td { border-bottom: none; }
+  td.num-col { font-family: var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+  /* ---- early hook: offered once, quietly, before the long part ---- */
+
+  .shortcut {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.75rem 1.1rem;
+    background: var(--accent-soft);
+    border: 1px solid var(--rule);
+    border-left: 4px solid var(--accent);
+    border-radius: 4px;
+    padding: 0.95rem 1.15rem;
+  }
+  .shortcut p {
+    margin: 0;
+    flex: 1 1 18rem;
+    font-size: var(--step--1);
+    line-height: 1.55;
+    color: var(--ink-soft);
+    max-width: none;
+  }
+  .shortcut a.inline-cta {
+    flex: none;
+    font-weight: 600;
+    font-size: var(--step--1);
+    white-space: nowrap;
+  }
+
+  /* ---- pricing ---- */
+
+  .tiers {
+    display: grid;
+    gap: 0.85rem;
+    grid-template-columns: repeat(auto-fit, minmax(min(11rem, 100%), 1fr));
+  }
+  .tier {
+    border: 1px solid var(--rule);
+    border-radius: 6px;
+    padding: 0.85rem 1rem;
+    background: var(--surface-alt);
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    min-width: 0;
+  }
+  .tier .who {
+    font-family: var(--mono);
+    font-size: var(--step--1);
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    color: var(--muted);
+  }
+  .tier .price {
+    font-size: var(--step-1);
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.02em;
+  }
+  .tier .price span { font-size: var(--step--1); font-weight: 500; color: var(--muted); }
+
+  .split th:first-child { width: 45%; }
+  .split td.yes { color: var(--ok); font-weight: 600; }
+  .split td.no  { color: var(--muted); }
+  .split .mark { font-family: var(--mono); }
+
+  /* ---- cta ---- */
+
+  .cta {
+    border: 1px solid var(--rule-strong);
+    border-radius: 8px;
+    background: var(--surface);
+    padding: clamp(1.35rem, 3.5vw, 2rem);
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+  .btn {
+    align-self: flex-start;
+    display: inline-block;
+    background: var(--accent);
+    color: var(--ground);
+    font-weight: 600;
+    font-size: var(--step-0);
+    text-decoration: none;
+    padding: 0.7rem 1.3rem;
+    border-radius: 6px;
+    border: 1px solid var(--accent);
+  }
+  .btn:hover { filter: brightness(1.08); }
+  .checklist { list-style: none; padding: 0; display: flex; flex-direction: column; gap: 0.4rem; }
+  .checklist li { display: flex; gap: 0.6rem; align-items: baseline; margin: 0; }
+  .checklist li::before {
+    content: "✓";
+    color: var(--ok);
+    font-family: var(--mono);
+    font-weight: 700;
+    flex: none;
+  }
+
+  /* ---- faq + foot ---- */
+
+  .faq { display: flex; flex-direction: column; gap: 1.4rem; }
+  .qa { display: flex; flex-direction: column; gap: 0.4rem; }
+  .qa h3 { font-size: var(--step-0); font-weight: 650; }
+
+  hr.rule { border: none; border-top: 1px solid var(--rule); margin: 0; }
+
+  footer { color: var(--muted); font-size: var(--step--1); display: flex; flex-direction: column; gap: 0.5rem; }
+
+  section { display: flex; flex-direction: column; gap: 1.15rem; }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; animation: none !important; }
+  }
+</style>
+
+<div class="wrap">
+
+  <header class="hero">
+    <p class="eyebrow">WooCommerce · Action Scheduler</p>
+    <h1>“Past-due actions found;<br>something may be wrong”</h1>
+
+    <div class="notice">
+      Action Scheduler: <strong>848 past-due actions found; something may be wrong.</strong>
+    </div>
+
+    <p class="standfirst">
+      WooCommerce shows you that and then leaves you alone with it. It doesn’t say what
+      is wrong, which plugin caused it, or what to do. This page answers all three —
+      and the number in your warning doesn’t matter. Six, 263, or ten million, the
+      causes are the same.
+    </p>
+    <div class="shortcut">
+      <p>
+        <strong>In a hurry?</strong> The free <strong>Past-Due Actions</strong> plugin runs
+        every check on this page and names your cause in one screen. Or keep reading and
+        do it by hand — everything it checks is written out below.
+      </p>
+      <a class="inline-cta" href="#get-it">Get the free plugin →</a>
+    </div>
+  </header>
+
+  <hr class="rule">
+
+  <section>
+    <h2>What the warning actually means</h2>
+    <p>
+      Plenty of things on a WooCommerce store don’t happen while you watch. Subscription
+      renewals, order confirmation emails, stock syncs, abandoned-cart reminders — these
+      get put on a queue called <strong>Action Scheduler</strong> and run in the background.
+    </p>
+    <p>
+      A <em>past-due action</em> is a job whose scheduled time has passed and which still
+      hasn’t run. One or two is normal under load. Hundreds means the queue has stopped
+      moving, and the work is piling up rather than happening.
+    </p>
+    <p>
+      Confusingly, “past due” isn’t a status Action Scheduler stores. That’s why you can’t
+      find these by filtering the list, and why the warning appears while every row still
+      says <code>pending</code>.
+    </p>
+  </section>
+
+  <section>
+    <h2>Is it urgent?</h2>
+    <p>
+      Usually yes, and it’s already been happening for a while by the time you see the
+      notice. Depending on what your store runs, a stopped queue means:
+    </p>
+    <ul>
+      <li><strong>Subscription renewals aren’t charging</strong> — customers keep their access, you don’t get paid</li>
+      <li><strong>Order emails aren’t sending</strong> — confirmations, shipping notices, password resets</li>
+      <li><strong>Stock isn’t syncing</strong> — you oversell items you don’t have</li>
+      <li><strong>Bookings and reminders never fire</strong></li>
+      <li><strong>Reports and analytics silently go stale</strong></li>
+    </ul>
+    <p>
+      The jobs aren’t lost. They’re queued, and most will run once the queue moves again —
+      which is why fixing the cause matters more than clearing the list.
+    </p>
+  </section>
+
+  <hr class="rule">
+
+  <section>
+    <h2>Start here: the 60-second test</h2>
+    <p>
+      Before changing anything, find out which half of the problem you have. Run the queue
+      by hand once and watch what the number does.
+    </p>
+
+    <div class="fork">
+      <div class="block">
+        <span class="label">If you have WP-CLI</span>
+        <pre><code>wp action-scheduler run</code></pre>
+      </div>
+      <div class="block">
+        <span class="label">If you don’t</span>
+        <p style="font-size: var(--step--1); color: var(--ink-soft);">
+          Open <code>https://your-site.com/wp-cron.php?doing_wp_cron</code> in a browser
+          tab, wait for it to finish loading, then reload
+          <strong>WooCommerce → Status → Scheduled Actions</strong>.
+        </p>
+      </div>
+
+      <div class="fork-outcomes">
+        <div class="outcome sched">
+          <span class="verdict">Actions cleared</span>
+          <p>
+            Your jobs are fine — nothing is <em>triggering</em> the queue automatically.
+            This is a scheduling problem. Go to causes 1 and 2.
+          </p>
+        </div>
+        <div class="outcome fail">
+          <span class="verdict">Nothing cleared</span>
+          <p>
+            The queue is being triggered but the jobs themselves are breaking. This is a
+            failing-plugin problem. Go to cause 3.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <hr class="rule">
+
+  <section class="causes">
+    <h2>The six causes, most common first</h2>
+
+    <article class="cause">
+      <span class="num">1</span>
+      <h3>WP-Cron is switched off and nothing replaced it</h3>
+      <p class="freq">The cause more often than all the others combined</p>
+      <div class="body">
+        <p>
+          Someone — a host, a speed-optimisation guide, a previous developer — added a line
+          to <code>wp-config.php</code> that disables WordPress’s built-in scheduler, and
+          never set up the real server cron job that was supposed to replace it. The store
+          works fine. Nothing background does.
+        </p>
+        <div class="block">
+          <span class="label">How to check</span>
+          <p>Search <code>wp-config.php</code> for this line:</p>
+          <pre><code>define( 'DISABLE_WP_CRON', true );</code></pre>
+        </div>
+        <div class="block">
+          <span class="label">How to fix</span>
+          <p>
+            Either delete that line, or — better on a busy store — keep it and add a real
+            cron job in your hosting panel, so the queue runs on a schedule you control:
+          </p>
+          <pre><code>*/5 * * * * curl -s https://your-site.com/wp-cron.php?doing_wp_cron &gt;/dev/null 2&gt;&amp;1</code></pre>
+        </div>
+      </div>
+    </article>
+
+    <article class="cause">
+      <span class="num">2</span>
+      <h3>The site can’t call itself</h3>
+      <p class="freq">Common on staging sites, firewalled hosts and sites behind a proxy</p>
+      <div class="body">
+        <p>
+          WP-Cron works by making an HTTP request to your own site. If that request can’t
+          get through — a firewall rule, HTTP basic auth on a staging site, a security
+          plugin, a misconfigured proxy — it fails silently. Nothing is logged and nothing
+          on the front end looks wrong.
+        </p>
+        <div class="block">
+          <span class="label">How to check</span>
+          <p>
+            <strong>Tools → Site Health</strong>. Look for
+            <em>“Your site could not complete a loopback request.”</em>
+          </p>
+        </div>
+        <div class="block">
+          <span class="label">How to fix</span>
+          <ul>
+            <li>Remove HTTP basic auth, or allowlist your own server’s IP</li>
+            <li>Check any security or firewall plugin for a rule blocking self-requests</li>
+            <li>If you can’t unblock it, use the real server cron job from cause 1 — it doesn’t depend on loopback</li>
+          </ul>
+        </div>
+      </div>
+    </article>
+
+    <article class="cause">
+      <span class="num">3</span>
+      <h3>The actions are failing, not waiting</h3>
+      <p class="freq">A completely different problem with a completely different fix</p>
+      <div class="body">
+        <p>
+          If your jobs show as <code>failed</code> rather than <code>pending</code>, your
+          scheduling is working perfectly. A plugin’s job is throwing an error every time
+          it runs. Clearing the queue or fixing cron will not help — it will just fail
+          faster.
+        </p>
+        <div class="block">
+          <span class="label">How to check</span>
+          <p>
+            <strong>WooCommerce → Status → Scheduled Actions → Failed</strong>. Note the
+            <em>hook</em> name, which tells you which plugin owns the broken job:
+          </p>
+          <div class="scroller">
+            <table>
+              <thead>
+                <tr><th>Hook name starts with</th><th>The plugin responsible</th></tr>
+              </thead>
+              <tbody>
+                <tr><td class="num-col">woocommerce_scheduled_subscription_</td><td>WooCommerce Subscriptions</td></tr>
+                <tr><td class="num-col">wc-admin_</td><td>WooCommerce Admin / Analytics</td></tr>
+                <tr><td class="num-col">woocommerce_run_product_attribute_</td><td>WooCommerce core lookup tables</td></tr>
+                <tr><td class="num-col">wpforms_</td><td>WPForms</td></tr>
+                <tr><td class="num-col">mailpoet_</td><td>MailPoet</td></tr>
+                <tr><td class="num-col">jetpack_</td><td>Jetpack</td></tr>
+                <tr><td class="num-col">action_scheduler_</td><td>Action Scheduler itself</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div class="block">
+          <span class="label">How to fix</span>
+          <p>
+            Update that plugin first. If it’s already current, turn on
+            <code>WP_DEBUG_LOG</code> and read <code>wp-content/debug.log</code> while a
+            batch runs — the fatal error names the file. Then take the hook name and the
+            error to that plugin’s support forum.
+          </p>
+        </div>
+      </div>
+    </article>
+
+    <article class="cause">
+      <span class="num">4</span>
+      <h3>The backlog is growing faster than the queue clears it</h3>
+      <p class="freq">Typical on high-volume stores, and after a plugin misbehaves once</p>
+      <div class="body">
+        <p>
+          Action Scheduler processes a limited number of actions per batch. If your store
+          queues more work than a batch clears, the number climbs forever even though
+          everything is technically working.
+        </p>
+        <div class="block">
+          <span class="label">How to check</span>
+          <p>
+            Note the past-due count, wait ten minutes, and look again. Falling slowly means
+            you’re under-provisioned, not broken. Rising means something is queueing
+            faster than it should — usually one plugin scheduling duplicates.
+          </p>
+        </div>
+        <div class="block">
+          <span class="label">How to fix</span>
+          <p>Raise how much the queue chews through per run:</p>
+          <pre><code>add_filter( 'action_scheduler_queue_runner_batch_size', function () {
+    return 100;
+} );
+
+add_filter( 'action_scheduler_queue_runner_concurrent_batches', function () {
+    return 3;
+} );</code></pre>
+          <p>
+            Raise these gradually. Set them too high on shared hosting and you’ll trip
+            cause 5 instead.
+          </p>
+        </div>
+      </div>
+    </article>
+
+    <article class="cause">
+      <span class="num">5</span>
+      <h3>PHP limits are cutting batches off part-way</h3>
+      <p class="freq">Silent, and it makes the backlog look permanent</p>
+      <div class="body">
+        <p>
+          A batch starts, hits <code>max_execution_time</code> or <code>memory_limit</code>,
+          and dies mid-run. The actions it had claimed go back on the queue, so the same
+          work is attempted forever and never completes. The count barely moves.
+        </p>
+        <div class="block">
+          <span class="label">How to check</span>
+          <p>
+            Look in your PHP error log for timeouts or memory-exhausted fatals with
+            timestamps that match your cron schedule.
+          </p>
+        </div>
+        <div class="block">
+          <span class="label">How to fix</span>
+          <p>
+            Raise the limits if your host allows it, or lower the batch size so each run
+            finishes inside them — the opposite of cause 4, which is why identifying the
+            right cause first matters:
+          </p>
+          <pre><code>add_filter( 'action_scheduler_queue_runner_time_limit', function () {
+    return 120;
+} );</code></pre>
+        </div>
+      </div>
+    </article>
+
+    <article class="cause">
+      <span class="num">6</span>
+      <h3>The table is too big to recover normally</h3>
+      <p class="freq">Rare, but unmistakable once you’re here</p>
+      <div class="body">
+        <p>
+          Some stores reach millions of rows in
+          <code>wp_actionscheduler_actions</code> — usually after months of a plugin
+          queueing duplicates. At that size the admin screen times out just counting them,
+          and no amount of batch tuning helps.
+        </p>
+        <div class="block">
+          <span class="label">How to check</span>
+          <pre><code>SELECT status, COUNT(*) FROM wp_actionscheduler_actions GROUP BY status;</code></pre>
+          <p>
+            If that query is slow or times out, you’re in this case. Your table prefix may
+            differ from <code>wp_</code>.
+          </p>
+        </div>
+        <div class="block">
+          <span class="label">How to fix</span>
+          <p>
+            <strong>Back up the database first.</strong> Then delete <em>completed</em> and
+            <em>cancelled</em> rows in batches — never everything at once, and never the
+            pending ones, which are real work waiting to happen:
+          </p>
+          <pre><code>DELETE FROM wp_actionscheduler_actions
+WHERE status IN ( 'complete', 'canceled' )
+LIMIT 10000;</code></pre>
+          <p>Repeat until it stops deleting, then fix whichever cause above created them.</p>
+        </div>
+      </div>
+    </article>
+  </section>
+
+  <hr class="rule">
+
+  <section class="cta" id="get-it">
+    <p class="eyebrow">The shortcut</p>
+    <h2>Or have all six checked for you</h2>
+    <p>
+      <strong>Past-Due Actions</strong> is a free WordPress plugin that runs every check on
+      this page and tells you which cause you have, in one screen.
+    </p>
+    <ul class="checklist">
+      <li>Names the cause instead of the symptom — WP-Cron, loopback, failures, batch size, PHP limits, table size</li>
+      <li>Groups your backlog by hook and identifies the plugin behind each one</li>
+      <li>Separates jobs that are <em>waiting</em> from jobs that are <em>failing</em></li>
+      <li>Run the queue, retry failures, or cancel a backlog — cancelling marks rows, never deletes them</li>
+      <li>Emails you once a day if the backlog comes back</li>
+    </ul>
+    <a class="btn" href="https://wordpress.org/plugins/past-due-actions/" id="install-link">Get the free plugin</a>
+    <p style="font-size: var(--step--1); color: var(--muted);">
+      Free and open source, GPL-2.0. Works with any plugin that uses Action Scheduler —
+      WooCommerce, WPForms, MailPoet, Jetpack, Easy Digital Downloads.
+    </p>
+  </section>
+
+  <section>
+    <h2>What the free version doesn’t do</h2>
+    <p>
+      The free plugin fixes this. It has no memory and no eyes — it only helps when you
+      open it, which means you find out something broke the same way you did today: after
+      it already broke. <strong>Pro</strong> is the part that watches so you don’t have to.
+    </p>
+
+    <div class="scroller">
+      <table class="split">
+        <thead>
+          <tr><th>&nbsp;</th><th>Free</th><th>Pro</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>All six diagnostics, with the cause named</td><td class="yes mark">✓</td><td class="yes mark">✓</td></tr>
+          <tr><td>Backlog grouped by hook and owning plugin</td><td class="yes mark">✓</td><td class="yes mark">✓</td></tr>
+          <tr><td>Run the queue, retry failures, cancel a backlog</td><td class="yes mark">✓</td><td class="yes mark">✓</td></tr>
+          <tr><td>Daily email if the backlog grows</td><td class="yes mark">✓</td><td class="yes mark">✓</td></tr>
+          <tr><td>Checks <strong>hourly</strong>, so you hear in an hour, not a day</td><td class="no mark">—</td><td class="yes mark">✓</td></tr>
+          <tr><td>Slack and webhook alerts</td><td class="no mark">—</td><td class="yes mark">✓</td></tr>
+          <tr><td>History — see the queue degrading over weeks</td><td class="no mark">—</td><td class="yes mark">✓</td></tr>
+          <tr><td>Auto-repair — retry failing hooks unattended</td><td class="no mark">—</td><td class="yes mark">✓</td></tr>
+          <tr><td>One licence across every site you manage</td><td class="no mark">—</td><td class="yes mark">✓</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="tiers">
+      <div class="tier">
+        <span class="who">1 site</span>
+        <span class="price">$39<span> / year</span></span>
+      </div>
+      <div class="tier">
+        <span class="who">5 sites</span>
+        <span class="price">$89<span> / year</span></span>
+      </div>
+      <div class="tier">
+        <span class="who">25 sites</span>
+        <span class="price">$199<span> / year</span></span>
+      </div>
+    </div>
+
+    <p style="font-size: var(--step--1); color: var(--muted);">
+      If you run one store and this was a one-off, the free version is genuinely all you
+      need — take it and go. Pro is for people who have been burned by this before, and for
+      anyone maintaining enough sites that checking each one by hand isn’t realistic.
+    </p>
+  </section>
+
+  <hr class="rule">
+
+  <section class="faq">
+    <h2>Common questions</h2>
+
+    <div class="qa">
+      <h3>My warning says a different number — 6, 77, 263, 10 million. Does that change anything?</h3>
+      <p>
+        No. The number is how many jobs are waiting, not what went wrong. The same six
+        causes apply at every size. Only cause 6 depends on the number being genuinely
+        enormous.
+      </p>
+    </div>
+
+    <div class="qa">
+      <h3>My scheduled actions are pending but never run. Is that the same problem?</h3>
+      <p>
+        Yes — that’s the same thing described from the other side. Past due actions all sit
+        in the list as <code>pending</code>, because “past due” isn’t a status Action
+        Scheduler stores. If your scheduled actions are not running and the count keeps
+        climbing, work through the six causes above: the queue isn’t being processed.
+      </p>
+    </div>
+
+    <div class="qa">
+      <h3>WooCommerce cron isn’t working at all. Where do I start?</h3>
+      <p>
+        With the 60-second test above. Trigger the queue by hand once: if the work happens,
+        WooCommerce cron is fine and nothing is <em>starting</em> it — cause 1 or 2. If
+        nothing happens, the jobs themselves are failing — cause 3. Almost every “WooCommerce
+        cron not working” report resolves to one of those three.
+      </p>
+    </div>
+
+    <div class="qa">
+      <h3>What’s the difference between past-due actions and failed actions?</h3>
+      <p>
+        A past-due action was never attempted — its time came and nothing picked it up.
+        A failed action <em>was</em> attempted and threw an error. They look similar in the
+        admin and have opposite fixes: past-due means fix your scheduling, failed means fix
+        the plugin whose job is breaking. Getting this the wrong way round is the most
+        common wasted afternoon here.
+      </p>
+    </div>
+
+    <div class="qa">
+      <h3>Can I just delete the past-due actions and move on?</h3>
+      <p>
+        You can, and the warning will come back within days because you removed the
+        symptom. Worse, those rows are real work — pending subscription renewals and
+        unsent emails — so deleting them means those things never happen at all.
+      </p>
+    </div>
+
+    <div class="qa">
+      <h3>Will one of the “Action Scheduler cleaner” plugins fix this?</h3>
+      <p>
+        No. Those delete <em>completed</em> actions to shrink your database, which is
+        useful housekeeping and does nothing for actions that are stuck. If you’re here
+        because of the past-due warning, a cleaner won’t help.
+      </p>
+    </div>
+
+    <div class="qa">
+      <h3>I don’t use WooCommerce. Why am I seeing this?</h3>
+      <p>
+        Action Scheduler is a shared library that ships inside many plugins — WPForms,
+        MailPoet, Jetpack, Easy Digital Downloads and others. Any of them can produce this
+        warning.
+      </p>
+    </div>
+
+    <div class="qa">
+      <h3>The count went down on its own. Am I fine?</h3>
+      <p>
+        Probably a temporary spike — an import, a bulk update, a traffic burst. Check again
+        in a day. If it climbs back, you have one of the six causes and it just hasn’t
+        become obvious yet.
+      </p>
+    </div>
+
+    <div class="qa">
+      <h3>Is it safe to run <code>wp-cron.php</code> manually?</h3>
+      <p>
+        Yes. It does exactly what WordPress does on its own schedule — processes whatever
+        is due right now. It’s the safest first diagnostic there is.
+      </p>
+    </div>
+  </section>
+
+  <hr class="rule">
+
+  <footer>
+    <p>
+      Written by Hamza Naimat, who builds <a href="https://wordpress.org/plugins/past-due-actions/">Past-Due Actions</a>.
+      Corrections welcome — if something here didn’t match what you saw on your store, that’s
+      worth knowing.
+    </p>
+    <p>Last reviewed August 2026, against WooCommerce and Action Scheduler current at that date.</p>
+  </footer>
+
+</div>
