@@ -92,6 +92,13 @@ def main() -> int:
     title_text = title.group(1).strip() if title else "Past-Due Actions"
     desc_text = desc.group(1).strip() if desc else ""
 
+    # The title is literally a quoted error message, so it contains double quotes.
+    # Dropped into content="..." unescaped they close the attribute early and the
+    # tag silently becomes empty - which is how og:title shipped blank the first
+    # time. Element content keeps the real quotes; attributes get escaped.
+    title_attr = html.escape(title_text, quote=True)
+    desc_attr = html.escape(desc_text, quote=True)
+
     # Strip the two tags out of the head fragment; they are re-emitted in order below.
     head_rest = head_src
     if title:
@@ -105,15 +112,15 @@ def main() -> int:
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{title_text}</title>
-<meta name="description" content="{desc_text}">
+<meta name="description" content="{desc_attr}">
 <link rel="canonical" href="{SITE}">
 <meta property="og:type" content="article">
-<meta property="og:title" content="{title_text}">
-<meta property="og:description" content="{desc_text}">
+<meta property="og:title" content="{title_attr}">
+<meta property="og:description" content="{desc_attr}">
 <meta property="og:url" content="{SITE}">
 <meta name="twitter:card" content="summary">
-<meta name="twitter:title" content="{title_text}">
-<meta name="twitter:description" content="{desc_text}">
+<meta name="twitter:title" content="{title_attr}">
+<meta name="twitter:description" content="{desc_attr}">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 16 16%22><text y=%2213%22 font-size=%2213%22>&#9201;</text></svg>">
 {faq_schema(body_src)}
 {head_rest.strip()}
