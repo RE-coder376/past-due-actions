@@ -4,7 +4,7 @@ Tags: action scheduler, past due actions, scheduled actions, woocommerce cron, w
 Requires at least: 7.0
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 1.2.1
+Stable tag: 1.2.2
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -104,6 +104,10 @@ No. Action Scheduler ships inside several plugins, and this works with any of th
 3. Daily warning settings
 
 == Changelog ==
+
+= 1.2.2 =
+
+* A customer who buys after installing the free version ends up with both copies present. The paid one now tells the SDK its own path and stops, so the duplicate is deactivated instead of two copies fighting over the same cron event and the same options.
 
 = 1.2.1 =
 

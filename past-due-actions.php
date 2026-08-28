@@ -3,7 +3,7 @@
  * Plugin Name:       Past-Due Actions — Action Scheduler Monitor
  * Plugin URI:        https://wordpress.org/plugins/past-due-actions/
  * Description:       Find out why Action Scheduler has past-due actions, which plugin is responsible, and fix it. Diagnoses the cause instead of just deleting rows.
- * Version:           1.2.1
+ * Version:           1.2.2
  * Requires at least: 7.0
  * Requires PHP:      7.4
  * Author:            Hamza Naimat
@@ -34,7 +34,7 @@
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'PDA_VERSION', '1.2.1' );
+define( 'PDA_VERSION', '1.2.2' );
 define( 'PDA_FILE', __FILE__ );
 define( 'PDA_PATH', plugin_dir_path( __FILE__ ) );
 
@@ -52,115 +52,135 @@ define( 'PDA_PATH', plugin_dir_path( __FILE__ ) );
  * diagnosis. Consent that has to be extracted from someone mid-outage is not
  * worth having.
  */
-if ( ! function_exists( 'pda_fs' ) ) {
-	/**
-	 * The Freemius instance.
-	 *
-	 * @return Freemius
-	 */
-	function pda_fs() {
-		global $pda_fs;
+/**
+ * Free and paid cannot both run.
+ *
+ * Freemius generates two builds from this codebase and they install into
+ * different folders, so a customer who buys after installing the free version
+ * ends up with both present. Whichever loads second finds pda_fs() already
+ * defined; it hands the SDK its own file path and stops, and the SDK
+ * deactivates the duplicate rather than letting two copies fight over the same
+ * cron event and the same options.
+ *
+ * The nested function_exists check below looks redundant and is not: PHP hoists
+ * function declarations, so without the inner guard the outer one would already
+ * see pda_fs() defined in this very file and never run the bootstrap at all.
+ */
+if ( function_exists( 'pda_fs' ) ) {
+	pda_fs()->set_basename( true, __FILE__ );
+} else {
 
-		if ( ! isset( $pda_fs ) ) {
-			require_once PDA_PATH . 'freemius/start.php';
+	if ( ! function_exists( 'pda_fs' ) ) {
+		/**
+		 * The Freemius instance.
+		 *
+		 * @return Freemius
+		 */
+		function pda_fs() {
+			global $pda_fs;
 
-			$pda_fs = fs_dynamic_init(
-				array(
-					'id'                  => '38014',
-					'slug'                => 'past-due-actions',
-					'type'                => 'plugin',
-					'public_key'          => 'pk_8fe65bbc94721ebf1ba0286f12e92',
-					'is_premium'          => true,
-					'premium_suffix'      => 'Pro',
-					'has_premium_version' => true,
-					'has_addons'          => false,
-					'has_paid_plans'      => true,
-					'menu'                => array(
-						'slug'       => 'past-due-actions',
-						'parent'     => array( 'slug' => 'tools.php' ),
-						'first-path' => 'tools.php?page=past-due-actions',
-						'contact'    => false,
-						'support'    => false,
-					),
-					'anonymous_mode'      => true,
-					'is_org_compliant'    => true,
-				)
-			);
+			if ( ! isset( $pda_fs ) ) {
+				require_once PDA_PATH . 'freemius/start.php';
+
+				$pda_fs = fs_dynamic_init(
+					array(
+						'id'                  => '38014',
+						'slug'                => 'past-due-actions',
+						'type'                => 'plugin',
+						'public_key'          => 'pk_8fe65bbc94721ebf1ba0286f12e92',
+						'is_premium'          => true,
+						'premium_suffix'      => 'Pro',
+						'has_premium_version' => true,
+						'has_addons'          => false,
+						'has_paid_plans'      => true,
+						'menu'                => array(
+							'slug'       => 'past-due-actions',
+							'parent'     => array( 'slug' => 'tools.php' ),
+							'first-path' => 'tools.php?page=past-due-actions',
+							'contact'    => false,
+							'support'    => false,
+						),
+						'anonymous_mode'      => true,
+						'is_org_compliant'    => true,
+					)
+				);
+			}
+
+			return $pda_fs;
 		}
 
-		return $pda_fs;
+		pda_fs();
+
+		/**
+		 * Removal runs through the SDK rather than uninstall.php.
+		 *
+		 * WordPress honours exactly one uninstall.php per plugin, and the SDK
+		 * ships its own to clear its data. A second one in the plugin root wins
+		 * silently and the SDK's cleanup never happens, so both have to go through
+		 * this hook instead.
+		 */
+		pda_fs()->add_action(
+			'after_uninstall',
+			static function () {
+				require_once PDA_PATH . 'includes/class-pda-uninstall.php';
+				PDA_Uninstall::run();
+			}
+		);
+
+		do_action( 'pda_fs_loaded' );
 	}
 
-	pda_fs();
-
 	/**
-	 * Removal runs through the SDK rather than uninstall.php.
+	 * Boot only when Action Scheduler is actually present.
 	 *
-	 * WordPress honours exactly one uninstall.php per plugin, and the SDK
-	 * ships its own to clear its data. A second one in the plugin root wins
-	 * silently and the SDK's cleanup never happens, so both have to go through
-	 * this hook instead.
+	 * It ships inside WooCommerce, WPForms, Jetpack and others rather than being
+	 * installed directly, so checking for the library beats checking for any one
+	 * plugin. Without it there is nothing to monitor and every query below would
+	 * hit a table that does not exist.
 	 */
-	pda_fs()->add_action(
-		'after_uninstall',
+	add_action(
+		'plugins_loaded',
 		static function () {
-			require_once PDA_PATH . 'includes/class-pda-uninstall.php';
-			PDA_Uninstall::run();
+			if ( ! class_exists( 'ActionScheduler' ) && ! function_exists( 'as_get_scheduled_actions' ) ) {
+				add_action(
+					'admin_notices',
+					static function () {
+						if ( ! current_user_can( 'manage_options' ) ) {
+							return;
+						}
+						echo '<div class="notice notice-warning"><p>';
+						esc_html_e(
+							'Past-Due Actions needs Action Scheduler, which ships with WooCommerce, WPForms, Jetpack and similar plugins. Nothing to monitor until one of those is active.',
+							'past-due-actions'
+						);
+						echo '</p></div>';
+					}
+				);
+				return;
+			}
+
+			require_once PDA_PATH . 'includes/class-pda-license.php';
+			require_once PDA_PATH . 'includes/class-pda-history.php';
+			require_once PDA_PATH . 'includes/class-pda-webhooks.php';
+			require_once PDA_PATH . 'includes/class-pda-scanner.php';
+			require_once PDA_PATH . 'includes/class-pda-diagnostics.php';
+			require_once PDA_PATH . 'includes/class-pda-repair.php';
+			require_once PDA_PATH . 'includes/class-pda-alerts.php';
+
+			PDA_Alerts::init();
+
+			if ( is_admin() ) {
+				require_once PDA_PATH . 'includes/class-pda-admin.php';
+				PDA_Admin::init();
+			}
 		}
 	);
 
-	do_action( 'pda_fs_loaded' );
+	register_deactivation_hook(
+		PDA_FILE,
+		static function () {
+			wp_clear_scheduled_hook( 'pda_daily_check' );
+		}
+	);
+
 }
-
-/**
- * Boot only when Action Scheduler is actually present.
- *
- * It ships inside WooCommerce, WPForms, Jetpack and others rather than being
- * installed directly, so checking for the library beats checking for any one
- * plugin. Without it there is nothing to monitor and every query below would
- * hit a table that does not exist.
- */
-add_action(
-	'plugins_loaded',
-	static function () {
-		if ( ! class_exists( 'ActionScheduler' ) && ! function_exists( 'as_get_scheduled_actions' ) ) {
-			add_action(
-				'admin_notices',
-				static function () {
-					if ( ! current_user_can( 'manage_options' ) ) {
-						return;
-					}
-					echo '<div class="notice notice-warning"><p>';
-					esc_html_e(
-						'Past-Due Actions needs Action Scheduler, which ships with WooCommerce, WPForms, Jetpack and similar plugins. Nothing to monitor until one of those is active.',
-						'past-due-actions'
-					);
-					echo '</p></div>';
-				}
-			);
-			return;
-		}
-
-		require_once PDA_PATH . 'includes/class-pda-license.php';
-		require_once PDA_PATH . 'includes/class-pda-history.php';
-		require_once PDA_PATH . 'includes/class-pda-webhooks.php';
-		require_once PDA_PATH . 'includes/class-pda-scanner.php';
-		require_once PDA_PATH . 'includes/class-pda-diagnostics.php';
-		require_once PDA_PATH . 'includes/class-pda-repair.php';
-		require_once PDA_PATH . 'includes/class-pda-alerts.php';
-
-		PDA_Alerts::init();
-
-		if ( is_admin() ) {
-			require_once PDA_PATH . 'includes/class-pda-admin.php';
-			PDA_Admin::init();
-		}
-	}
-);
-
-register_deactivation_hook(
-	PDA_FILE,
-	static function () {
-		wp_clear_scheduled_hook( 'pda_daily_check' );
-	}
-);
