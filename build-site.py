@@ -20,7 +20,10 @@ SITE = "https://re-coder376.github.io/past-due-actions/"
 SRC = pathlib.Path("site/index.html")
 OUT = pathlib.Path("docs/index.html")
 
-ZIP_URL = "https://github.com/RE-coder376/past-due-actions/raw/main/dist/past-due-actions.zip"
+# The FREE build. The other zip is flagged is_premium and opens a licence
+# wall on install, which is right for a paying customer and wrong for a
+# public download link.
+ZIP_URL = "https://github.com/RE-coder376/past-due-actions/raw/main/dist/past-due-actions-free.zip"
 
 
 def split_head_body(source: str):
