@@ -593,10 +593,16 @@ pda_check( 'deactivation clears the daily check', false === wp_next_scheduled( P
 PDA_Alerts::init();
 pda_check( 'it comes back on the next load', false !== wp_next_scheduled( PDA_Alerts::HOOK ) );
 
-$uninstall = WP_PLUGIN_DIR . '/past-due-actions/uninstall.php';
+// The licensing SDK owns uninstall.php, so ours had to move to a class the
+// SDK's after_uninstall hook calls. A stray uninstall.php in the plugin root
+// would silently win over the SDK's and stop its cleanup running at all.
+$uninstall = WP_PLUGIN_DIR . '/past-due-actions/includes/class-pda-uninstall.php';
 pda_check( 'an uninstall routine exists', file_exists( $uninstall ) );
+pda_check( 'no uninstall.php shadows the SDK',
+	! file_exists( WP_PLUGIN_DIR . '/past-due-actions/uninstall.php' ) );
 
 if ( file_exists( $uninstall ) ) {
+	require_once $uninstall;
 	foreach ( array( PDA_Alerts::OPT_ON, PDA_Alerts::OPT_LIMIT, PDA_Alerts::OPT_SENT, PDA_Alerts::OPT_EMAIL,
 		PDA_Alerts::OPT_FREQ, PDA_Webhooks::OPT_URL, PDA_History::OPTION,
 		PDA_Repair::OPT_AUTO, PDA_Repair::OPT_LAST ) as $opt ) {
@@ -605,8 +611,7 @@ if ( file_exists( $uninstall ) ) {
 	// A neighbour's option, to prove the cleanup is targeted and not a sweep of
 	// everything with a pda_ prefix or worse.
 	update_option( 'pda_test_bystander', 'keep-me', false );
-	define( 'WP_UNINSTALL_PLUGIN', 'past-due-actions/past-due-actions.php' );
-	include $uninstall;
+	PDA_Uninstall::run();
 
 	$left = array();
 	foreach ( array( PDA_Alerts::OPT_ON, PDA_Alerts::OPT_LIMIT, PDA_Alerts::OPT_SENT, PDA_Alerts::OPT_EMAIL,
@@ -618,6 +623,14 @@ if ( file_exists( $uninstall ) ) {
 	}
 	pda_check( 'uninstall removes every option it created', ! $left, implode( ', ', $left ) );
 	pda_check( 'uninstall clears the cron event', false === wp_next_scheduled( PDA_Alerts::HOOK ) );
+	// A constant renamed in one file and not the other would leave a row behind
+	// that nothing ever reads again, and no other assertion would notice.
+	$known = PDA_Uninstall::options();
+	$used  = array( PDA_Alerts::OPT_ON, PDA_Alerts::OPT_LIMIT, PDA_Alerts::OPT_SENT, PDA_Alerts::OPT_EMAIL,
+		PDA_Alerts::OPT_FREQ, PDA_Webhooks::OPT_URL, PDA_History::OPTION,
+		PDA_Repair::OPT_AUTO, PDA_Repair::OPT_LAST );
+	$missed = array_diff( $used, $known );
+	pda_check( 'the cleanup list covers every option the code writes', ! $missed, implode( ', ', $missed ) );
 
 	// On a network, settings live per-site. Cleaning only the site that happened
 	// to run the uninstall leaves the rest of the network littered - and the
@@ -639,7 +652,7 @@ if ( file_exists( $uninstall ) ) {
 			restore_current_blog();
 		}
 
-		include $uninstall;
+		PDA_Uninstall::run();
 
 		$dirty = array();
 		foreach ( $others as $other_id ) {

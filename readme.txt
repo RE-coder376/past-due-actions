@@ -4,7 +4,7 @@ Tags: action scheduler, past due actions, scheduled actions, woocommerce cron, w
 Requires at least: 7.0
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 1.2.0
+Stable tag: 1.2.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -104,6 +104,10 @@ No. Action Scheduler ships inside several plugins, and this works with any of th
 3. Daily warning settings
 
 == Changelog ==
+
+= 1.2.1 =
+
+* Removal moved off uninstall.php and onto the licensing SDK's after_uninstall hook. WordPress honours only one uninstall.php per plugin, so ours was silently preventing the SDK's own cleanup from ever running.
 
 = 1.2.0 =
 
