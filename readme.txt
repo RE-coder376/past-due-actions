@@ -4,7 +4,7 @@ Tags: action scheduler, past due actions, scheduled actions, woocommerce cron, w
 Requires at least: 7.0
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 1.0.0
+Stable tag: 1.1.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -53,6 +53,18 @@ This plugin does not delete anything on its own. Cancelling is marked, not delet
 
 Anything that uses Action Scheduler — WooCommerce, WooCommerce Subscriptions, WPForms, Jetpack, MailPoet, Easy Digital Downloads and many more.
 
+= Free and Pro =
+
+Everything described above is free, permanently, including the daily email alert. Nothing that this plugin already did has been moved behind a payment.
+
+Pro adds things that did not exist before:
+
+* **Check every hour** instead of once a day, so a broken queue is caught within an hour rather than the following morning.
+* **Slack and webhook alerts.** A Slack incoming webhook gets a readable message; any other HTTPS endpoint gets JSON with the same numbers in named fields, so it can be routed into whatever you already use.
+* **A record of the backlog over time**, and a plain answer to the question a single number cannot settle: is this rising or draining?
+
+Pro is optional. If you never buy it, the plugin you installed keeps working exactly as it does today.
+
 == Installation ==
 
 1. Install and activate. Action Scheduler must be present, which it is if you run WooCommerce or any plugin that uses it.
@@ -77,6 +89,10 @@ Your jobs are fine and nothing is triggering the queue automatically. Look at th
 
 The actions are failing rather than waiting. Check which hook has failures in the table, then look at that plugin's support forum or error log.
 
+= Is the free version limited on purpose? =
+
+No. The free version diagnoses the cause, groups the backlog by hook, names the plugin responsible, runs the queue, retries failures, cancels safely, and emails you daily when the backlog grows. Pro adds hourly checks, Slack and webhook alerts, and a history of the backlog — three things that did not exist before rather than three things taken away.
+
 = Do I need WooCommerce? =
 
 No. Action Scheduler ships inside several plugins, and this works with any of them.
@@ -88,6 +104,13 @@ No. Action Scheduler ships inside several plugins, and this works with any of th
 3. Daily warning settings
 
 == Changelog ==
+
+= 1.1.0 =
+
+* New: hourly checking, Slack and webhook alerts, a record of the backlog over time, and unattended retrying of failed actions. All four are part of Pro.
+* Nothing was moved out of the free version. The diagnostics, the repairs and the daily email are unchanged.
+* The alert email now names the trend when there is one.
+* Uninstall cleans up the options the new features create.
 
 = 1.0.0 =
 * First release.

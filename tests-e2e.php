@@ -379,7 +379,211 @@ pda_check( 'switching alerts off silences them', 0 === $fire() );
 update_option( PDA_Alerts::OPT_ON, 1, false );
 delete_option( PDA_Alerts::OPT_EMAIL );
 
-WP_CLI::log( "\n--- 11. Install, uninstall, and leaving no mess" );
+WP_CLI::log( "\n--- 11. Licence gate" );
+
+$pda_pro = false;
+add_filter( 'pda_is_pro', function () use ( &$pda_pro ) { return $pda_pro; } );
+$pro_on  = function () use ( &$pda_pro ) { $pda_pro = true;  PDA_License::flush(); };
+$pro_off = function () use ( &$pda_pro ) { $pda_pro = false; PDA_License::flush(); };
+
+$pro_off();
+pda_check( 'free install is not pro', false === PDA_License::is_pro() );
+pda_check( 'free install checks daily', 'daily' === PDA_Alerts::frequency() );
+
+// The setting exists but must not take effect without a licence, otherwise the
+// paywall is decorative.
+update_option( PDA_Alerts::OPT_FREQ, 'hourly', false );
+pda_check( 'free install ignores an hourly setting', 'daily' === PDA_Alerts::frequency() );
+pda_check( 'free quiet period is a day', DAY_IN_SECONDS === PDA_Alerts::quiet_period() );
+
+$pro_on();
+pda_check( 'pro install is pro', true === PDA_License::is_pro() );
+pda_check( 'pro honours the hourly setting', 'hourly' === PDA_Alerts::frequency() );
+pda_check( 'pro quiet period follows the interval', HOUR_IN_SECONDS === PDA_Alerts::quiet_period() );
+update_option( PDA_Alerts::OPT_FREQ, 'daily', false );
+pda_check( 'pro honours daily when chosen', 'daily' === PDA_Alerts::frequency() );
+
+WP_CLI::log( "\n--- 12. History and trend" );
+
+PDA_History::clear();
+pda_check( 'history starts empty', array() === PDA_History::all() );
+
+$t0 = PDA_History::trend();
+pda_check( 'trend is unknown with no samples', false === $t0['known'] && 0 === $t0['samples'] );
+
+PDA_History::record( array( 'available' => true, 'past_due' => 100, 'pending' => 200, 'failed' => 3 ) );
+$t1 = PDA_History::trend();
+pda_check( 'trend is still unknown with one sample', false === $t1['known'] && 1 === $t1['samples'] );
+
+PDA_History::record( array( 'available' => true, 'past_due' => 260, 'pending' => 300, 'failed' => 9 ) );
+$t2 = PDA_History::trend();
+pda_check( 'trend detects a rising backlog', 'rising' === $t2['direction'], $t2['direction'] );
+pda_check( 'trend reports the real change', 160 === $t2['change'] && 100 === $t2['from'] && 260 === $t2['to'],
+	$t2['change'] . ' from ' . $t2['from'] . ' to ' . $t2['to'] );
+pda_check( 'trend reports the real percentage', 160.0 === $t2['percent'], (string) $t2['percent'] );
+
+PDA_History::clear();
+PDA_History::record( array( 'available' => true, 'past_due' => 900, 'pending' => 900, 'failed' => 0 ) );
+PDA_History::record( array( 'available' => true, 'past_due' => 40, 'pending' => 90, 'failed' => 0 ) );
+pda_check( 'trend detects a falling backlog', 'falling' === PDA_History::trend()['direction'] );
+
+PDA_History::clear();
+PDA_History::record( array( 'available' => true, 'past_due' => 500, 'pending' => 500, 'failed' => 0 ) );
+PDA_History::record( array( 'available' => true, 'past_due' => 504, 'pending' => 500, 'failed' => 0 ) );
+pda_check( 'a four-action drift is not called a trend', 'steady' === PDA_History::trend()['direction'] );
+
+// An unbounded option would grow forever on an hourly schedule.
+PDA_History::clear();
+for ( $i = 0; $i < PDA_History::KEEP + 25; $i++ ) {
+	PDA_History::record( array( 'available' => true, 'past_due' => $i, 'pending' => $i, 'failed' => 0 ) );
+}
+$kept = PDA_History::all();
+pda_check( 'history is capped', PDA_History::KEEP === count( $kept ), (string) count( $kept ) );
+pda_check( 'history keeps the newest samples, not the oldest',
+	(int) $kept[ count( $kept ) - 1 ]['p'] === PDA_History::KEEP + 24,
+	(string) $kept[ count( $kept ) - 1 ]['p'] );
+pda_check( 'history is not autoloaded', 'yes' !== $wpdb->get_var( $wpdb->prepare(
+	"SELECT autoload FROM {$wpdb->options} WHERE option_name = %s", PDA_History::OPTION ) ) );
+
+// An unavailable scanner must not write a phantom zero into the record.
+$before_unavailable = count( PDA_History::all() );
+PDA_History::record( array( 'available' => false, 'past_due' => 0, 'pending' => 0, 'failed' => 0 ) );
+pda_check( 'an unavailable scan is not recorded', $before_unavailable === count( PDA_History::all() ) );
+PDA_History::clear();
+
+WP_CLI::log( "\n--- 13. Webhook validation" );
+
+pda_check( 'rejects an empty webhook', false === PDA_Webhooks::is_valid( '' ) );
+pda_check( 'rejects a non-URL', false === PDA_Webhooks::is_valid( 'not a url' ) );
+pda_check( 'rejects plain http', false === PDA_Webhooks::is_valid( 'http://example.com/hook' ) );
+pda_check( 'accepts https', true === PDA_Webhooks::is_valid( 'https://example.com/hook' ) );
+pda_check( 'recognises a Slack webhook', true === PDA_Webhooks::is_slack( 'https://hooks.slack.com/services/T/B/x' ) );
+pda_check( 'does not mistake another host for Slack', false === PDA_Webhooks::is_slack( 'https://slack.com.evil.test/x' ) );
+
+WP_CLI::log( "\n--- 14. Webhook delivery" );
+
+$pda_sent = array();
+add_filter( 'pre_http_request', function ( $pre, $args, $url ) use ( &$pda_sent ) {
+	$pda_sent[] = array( 'url' => $url, 'body' => $args['body'] );
+	return array( 'response' => array( 'code' => 200, 'message' => 'OK' ), 'body' => 'ok' );
+}, 10, 3 );
+
+$pro_on();
+update_option( PDA_Webhooks::OPT_URL, 'https://example.com/hook', false );
+$pda_summary = PDA_Scanner::summary();
+$pda_result  = PDA_Webhooks::notify( $pda_summary, PDA_Scanner::past_due_by_hook( 5 ) );
+pda_check( 'a generic webhook reports success', true === $pda_result['sent'], $pda_result['message'] );
+pda_check( 'exactly one request was made', 1 === count( $pda_sent ), (string) count( $pda_sent ) );
+
+$payload = json_decode( $pda_sent[0]['body'], true );
+pda_check( 'the payload is valid JSON', is_array( $payload ) );
+pda_check( 'the payload carries the real backlog',
+	isset( $payload['past_due'] ) && (int) $payload['past_due'] === (int) $pda_summary['past_due'],
+	isset( $payload['past_due'] ) ? (string) $payload['past_due'] : 'missing' );
+pda_check( 'the payload names the event and the site',
+	'past_due_actions.alert' === ( isset( $payload['event'] ) ? $payload['event'] : '' ) && ! empty( $payload['site_url'] ) );
+pda_check( 'the payload lists the worst hooks',
+	! empty( $payload['worst'] ) && isset( $payload['worst'][0]['hook'] ) );
+
+$pda_sent = array();
+update_option( PDA_Webhooks::OPT_URL, 'https://hooks.slack.com/services/T/B/x', false );
+PDA_Webhooks::notify( $pda_summary, PDA_Scanner::past_due_by_hook( 5 ) );
+$slack = json_decode( $pda_sent[0]['body'], true );
+pda_check( 'Slack gets a text message, not the JSON document',
+	isset( $slack['text'] ) && ! isset( $slack['past_due'] ) );
+pda_check( 'the Slack message states the count',
+	false !== strpos( $slack['text'], (string) $pda_summary['past_due'] ) );
+
+WP_CLI::log( "\n--- 15. Auto-repair" );
+
+$pro_off();
+update_option( PDA_Repair::OPT_AUTO, 1, false );
+pda_check( 'auto-repair stays off without a licence', false === PDA_Repair::auto_enabled() );
+
+$pro_on();
+pda_check( 'auto-repair is on for pro when enabled', true === PDA_Repair::auto_enabled() );
+update_option( PDA_Repair::OPT_AUTO, 0, false );
+pda_check( 'auto-repair respects being switched off', false === PDA_Repair::auto_enabled() );
+update_option( PDA_Repair::OPT_AUTO, 1, false );
+
+// Give it something real to repair.
+delete_option( PDA_Repair::OPT_LAST );
+$make( 'pda_test_autofix', 'failed', time() - HOUR_IN_SECONDS, 12 );
+PDA_Scanner::flush();
+
+$failed_before = (int) $wpdb->get_var( $wpdb->prepare(
+	"SELECT COUNT(*) FROM {$table} WHERE hook = %s AND status = %s", 'pda_test_autofix', 'failed' ) );
+pda_check( 'the fixture is failing before the pass', 12 === $failed_before, (string) $failed_before );
+
+$fixed = PDA_Repair::auto();
+$failed_after = (int) $wpdb->get_var( $wpdb->prepare(
+	"SELECT COUNT(*) FROM {$table} WHERE hook = %s AND status = %s", 'pda_test_autofix', 'failed' ) );
+$pending_after = (int) $wpdb->get_var( $wpdb->prepare(
+	"SELECT COUNT(*) FROM {$table} WHERE hook = %s AND status = %s", 'pda_test_autofix', 'pending' ) );
+
+pda_check( 'auto-repair re-queued the failures', 12 === $pending_after, (string) $pending_after );
+pda_check( 'nothing is left failing', 0 === $failed_after, (string) $failed_after );
+pda_check( 'auto-repair reports what it did', $fixed['requeued'] >= 12, (string) $fixed['requeued'] );
+
+// Nothing may be destroyed by a process nobody is watching.
+$total_after = (int) $wpdb->get_var( $wpdb->prepare(
+	"SELECT COUNT(*) FROM {$table} WHERE hook = %s", 'pda_test_autofix' ) );
+pda_check( 'auto-repair deletes nothing', 12 === $total_after, (string) $total_after );
+pda_check( 'auto-repair cancels nothing', 0 === (int) $wpdb->get_var( $wpdb->prepare(
+	"SELECT COUNT(*) FROM {$table} WHERE hook = %s AND status = %s", 'pda_test_autofix', 'canceled' ) ) );
+
+$last = PDA_Repair::last_auto();
+pda_check( 'the last pass is recorded', is_array( $last ) && $last['requeued'] >= 12 );
+
+$wpdb->query( $wpdb->prepare( "DELETE FROM {$table} WHERE hook = %s", 'pda_test_autofix' ) );
+update_option( PDA_Repair::OPT_AUTO, 0, false );
+delete_option( PDA_Repair::OPT_LAST );
+$pro_off();
+PDA_Scanner::flush();
+
+WP_CLI::log( "\n--- 16. The gate holds during a real check" );
+
+update_option( PDA_Alerts::OPT_ON, 1, false );
+update_option( PDA_Alerts::OPT_LIMIT, 1, false );
+update_option( PDA_Webhooks::OPT_URL, 'https://example.com/hook', false );
+
+// Free: the email must still go out, and the webhook must not.
+$pro_off();
+$pda_sent  = array();
+$pda_mails = 0;
+$mail_spy  = function ( $null, $atts ) use ( &$pda_mails ) { ++$pda_mails; return true; };
+add_filter( 'pre_wp_mail', $mail_spy, 10, 2 );
+
+delete_option( PDA_Alerts::OPT_SENT );
+PDA_History::clear();
+PDA_Alerts::check();
+pda_check( 'the free daily email still sends', 1 === $pda_mails, (string) $pda_mails );
+pda_check( 'a free install sends no webhook', 0 === count( $pda_sent ), (string) count( $pda_sent ) );
+pda_check( 'a free install records no history', array() === PDA_History::all() );
+
+// Pro: both.
+$pro_on();
+$pda_sent  = array();
+$pda_mails = 0;
+delete_option( PDA_Alerts::OPT_SENT );
+PDA_Alerts::check();
+pda_check( 'a pro install still emails', 1 === $pda_mails, (string) $pda_mails );
+pda_check( 'a pro install sends the webhook', 1 === count( $pda_sent ), (string) count( $pda_sent ) );
+pda_check( 'a pro install records history', 1 === count( PDA_History::all() ) );
+
+// The quiet period must survive the licence change.
+$pda_mails = 0;
+$pda_sent  = array();
+PDA_Alerts::check();
+pda_check( 'the quiet period suppresses a second alert', 0 === $pda_mails && 0 === count( $pda_sent ) );
+
+remove_filter( 'pre_wp_mail', $mail_spy, 10 );
+$pro_off();
+delete_option( PDA_Webhooks::OPT_URL );
+delete_option( PDA_Alerts::OPT_SENT );
+PDA_History::clear();
+
+WP_CLI::log( "\n--- 17. Install, uninstall, and leaving no mess" );
 pda_check( 'the daily check is scheduled', false !== wp_next_scheduled( PDA_Alerts::HOOK ) );
 
 // Deactivation must take the cron event with it, or the site keeps firing a
@@ -393,7 +597,9 @@ $uninstall = WP_PLUGIN_DIR . '/past-due-actions/uninstall.php';
 pda_check( 'an uninstall routine exists', file_exists( $uninstall ) );
 
 if ( file_exists( $uninstall ) ) {
-	foreach ( array( PDA_Alerts::OPT_ON, PDA_Alerts::OPT_LIMIT, PDA_Alerts::OPT_SENT, PDA_Alerts::OPT_EMAIL ) as $opt ) {
+	foreach ( array( PDA_Alerts::OPT_ON, PDA_Alerts::OPT_LIMIT, PDA_Alerts::OPT_SENT, PDA_Alerts::OPT_EMAIL,
+		PDA_Alerts::OPT_FREQ, PDA_Webhooks::OPT_URL, PDA_History::OPTION,
+		PDA_Repair::OPT_AUTO, PDA_Repair::OPT_LAST ) as $opt ) {
 		update_option( $opt, 'x', false );
 	}
 	// A neighbour's option, to prove the cleanup is targeted and not a sweep of
@@ -403,7 +609,9 @@ if ( file_exists( $uninstall ) ) {
 	include $uninstall;
 
 	$left = array();
-	foreach ( array( PDA_Alerts::OPT_ON, PDA_Alerts::OPT_LIMIT, PDA_Alerts::OPT_SENT, PDA_Alerts::OPT_EMAIL ) as $opt ) {
+	foreach ( array( PDA_Alerts::OPT_ON, PDA_Alerts::OPT_LIMIT, PDA_Alerts::OPT_SENT, PDA_Alerts::OPT_EMAIL,
+		PDA_Alerts::OPT_FREQ, PDA_Webhooks::OPT_URL, PDA_History::OPTION,
+		PDA_Repair::OPT_AUTO, PDA_Repair::OPT_LAST ) as $opt ) {
 		if ( null !== get_option( $opt, null ) ) {
 			$left[] = $opt;
 		}

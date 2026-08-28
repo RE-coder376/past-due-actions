@@ -2,7 +2,7 @@
 /**
  * Leave nothing behind.
  *
- * Everything this plugin created is four options and one cron event. A
+ * Everything this plugin created is nine options and one cron event. A
  * diagnostic tool that litters the options table after removal is exactly the
  * kind of thing the people who install this are already annoyed about.
  *
@@ -20,6 +20,11 @@ $pda_options = array(
 	'pda_alert_threshold',
 	'pda_alert_last_sent',
 	'pda_alert_email',
+	'pda_alert_frequency',
+	'pda_webhook_url',
+	'pda_history',
+	'pda_autorepair',
+	'pda_autorepair_last',
 );
 
 if ( is_multisite() ) {

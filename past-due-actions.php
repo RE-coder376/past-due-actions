@@ -3,7 +3,7 @@
  * Plugin Name:       Past-Due Actions — Action Scheduler Monitor
  * Plugin URI:        https://wordpress.org/plugins/past-due-actions/
  * Description:       Find out why Action Scheduler has past-due actions, which plugin is responsible, and fix it. Diagnoses the cause instead of just deleting rows.
- * Version:           1.0.0
+ * Version:           1.1.0
  * Requires at least: 7.0
  * Requires PHP:      7.4
  * Author:            Hamza Naimat
@@ -34,7 +34,7 @@
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'PDA_VERSION', '1.0.0' );
+define( 'PDA_VERSION', '1.1.0' );
 define( 'PDA_FILE', __FILE__ );
 define( 'PDA_PATH', plugin_dir_path( __FILE__ ) );
 
@@ -67,6 +67,9 @@ add_action(
 			return;
 		}
 
+		require_once PDA_PATH . 'includes/class-pda-license.php';
+		require_once PDA_PATH . 'includes/class-pda-history.php';
+		require_once PDA_PATH . 'includes/class-pda-webhooks.php';
 		require_once PDA_PATH . 'includes/class-pda-scanner.php';
 		require_once PDA_PATH . 'includes/class-pda-diagnostics.php';
 		require_once PDA_PATH . 'includes/class-pda-repair.php';

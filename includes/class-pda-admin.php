@@ -28,6 +28,7 @@ class PDA_Admin {
 		add_action( 'admin_post_pda_retry', array( __CLASS__, 'handle_retry' ) );
 		add_action( 'admin_post_pda_cancel', array( __CLASS__, 'handle_cancel' ) );
 		add_action( 'admin_post_pda_settings', array( __CLASS__, 'handle_settings' ) );
+		add_action( 'admin_post_pda_test_webhook', array( __CLASS__, 'handle_test_webhook' ) );
 	}
 
 	/**
@@ -131,7 +132,49 @@ class PDA_Admin {
 		$email = isset( $_POST['email'] ) ? sanitize_email( wp_unslash( $_POST['email'] ) ) : '';
 		update_option( PDA_Alerts::OPT_EMAIL, is_email( $email ) ? $email : '', false );
 
+		// Pro-only settings are ignored rather than rejected when the licence
+		// is absent. A free install that posts these fields - an old form left
+		// open in a tab, a licence that lapsed mid-edit - should save the rest
+		// and carry on, not throw an error at somebody fixing a broken queue.
+		if ( PDA_License::is_pro() ) {
+			$freq = isset( $_POST['frequency'] ) ? sanitize_key( wp_unslash( $_POST['frequency'] ) ) : 'daily';
+			update_option( PDA_Alerts::OPT_FREQ, 'hourly' === $freq ? 'hourly' : 'daily', false );
+
+			$hook_url = isset( $_POST['webhook'] ) ? esc_url_raw( trim( wp_unslash( $_POST['webhook'] ) ) ) : '';
+			if ( '' === $hook_url ) {
+				delete_option( PDA_Webhooks::OPT_URL );
+			} elseif ( PDA_Webhooks::is_valid( $hook_url ) ) {
+				update_option( PDA_Webhooks::OPT_URL, $hook_url, false );
+			} else {
+				self::back( 'saved', __( 'Saved, but the webhook URL was ignored: it must be a full https:// address.', 'past-due-actions' ) );
+			}
+
+			update_option( PDA_Repair::OPT_AUTO, empty( $_POST['autorepair'] ) ? 0 : 1, false );
+
+			// The interval may have just changed; re-schedule on the way out.
+			PDA_Alerts::init();
+		}
+
 		self::back( 'saved' );
+	}
+
+	/**
+	 * Send a real alert to the configured endpoint, now.
+	 *
+	 * A webhook that is only exercised at 3am when the store is already broken
+	 * is a webhook nobody has ever seen work. This posts the same payload the
+	 * scheduled check would, so a wrong URL or a revoked Slack token surfaces
+	 * while somebody is sitting in front of the screen.
+	 */
+	public static function handle_test_webhook() {
+		self::guard();
+
+		if ( ! PDA_License::is_pro() ) {
+			self::back( 'saved', __( 'Webhooks are part of the paid version.', 'past-due-actions' ) );
+		}
+
+		$result = PDA_Webhooks::notify( PDA_Scanner::summary(), PDA_Scanner::past_due_by_hook( 5 ) );
+		self::back( $result['sent'] ? 'saved' : 'ran', $result['message'] );
 	}
 
 	/**
@@ -288,18 +331,95 @@ class PDA_Admin {
 				</p>
 			</form>
 
+			<h2 style="margin-top:2em"><?php esc_html_e( 'Is it getting worse?', 'past-due-actions' ); ?></h2>
+			<?php if ( ! PDA_License::is_pro() ) : ?>
+				<p class="description" style="max-width:44em">
+					<?php esc_html_e( 'A single number cannot tell you whether a queue is filling up or draining. Recording the backlog over time, and alerting to Slack or a webhook, are part of', 'past-due-actions' ); ?>
+					<a href="<?php echo esc_url( PDA_License::BUY_URL ); ?>" target="_blank" rel="noopener"><?php esc_html_e( 'Past-Due Actions Pro', 'past-due-actions' ); ?></a>.
+				</p>
+			<?php else : ?>
+				<?php
+				$trend  = PDA_History::trend();
+				$recent = PDA_History::recent( 14 );
+				$peak   = max( PDA_History::peak(), 1 );
+				?>
+				<?php if ( ! $trend['known'] ) : ?>
+					<p class="description" style="max-width:44em">
+						<?php
+						printf(
+							/* translators: %s: 'hourly' or 'daily' */
+							esc_html__( 'Nothing to compare yet. The backlog is recorded every time the %s check runs, and a direction appears once there are two samples.', 'past-due-actions' ),
+							esc_html( PDA_Alerts::frequency() )
+						);
+						?>
+					</p>
+				<?php else : ?>
+					<?php
+					$word = 'rising' === $trend['direction']
+						? __( 'rising', 'past-due-actions' )
+						: ( 'falling' === $trend['direction'] ? __( 'falling', 'past-due-actions' ) : __( 'steady', 'past-due-actions' ) );
+					$tint = 'rising' === $trend['direction'] ? '#b32d2e' : ( 'falling' === $trend['direction'] ? '#007017' : '#1d2327' );
+					?>
+					<p style="max-width:52em;font-size:1.05em">
+						<strong style="color:<?php echo esc_attr( $tint ); ?>"><?php echo esc_html( $word ); ?></strong>
+						&mdash;
+						<?php
+						printf(
+							/* translators: 1: earlier count, 2: current count, 3: human readable duration */
+							esc_html__( '%1$s past due when recording started, %2$s now, over %3$s.', 'past-due-actions' ),
+							esc_html( number_format_i18n( $trend['from'] ) ),
+							esc_html( number_format_i18n( $trend['to'] ) ),
+							esc_html( human_time_diff( $trend['since'] ) )
+						);
+						?>
+					</p>
+					<table class="widefat striped" style="max-width:52em">
+						<thead><tr>
+							<th><?php esc_html_e( 'When', 'past-due-actions' ); ?></th>
+							<th style="width:50%"><?php esc_html_e( 'Past due', 'past-due-actions' ); ?></th>
+							<th><?php esc_html_e( 'Failed', 'past-due-actions' ); ?></th>
+						</tr></thead>
+						<tbody>
+						<?php foreach ( $recent as $row ) : ?>
+							<?php $width = max( 1, (int) round( ( (int) $row['p'] / $peak ) * 74 ) ); ?>
+							<tr>
+								<td><?php echo esc_html( human_time_diff( (int) $row['t'] ) ); ?> <?php esc_html_e( 'ago', 'past-due-actions' ); ?></td>
+								<td style="white-space:nowrap">
+									<span style="display:inline-block;vertical-align:middle;height:.7em;width:<?php echo esc_attr( (string) $width ); ?>%;background:#b32d2e;min-width:2px"></span>
+									<span style="margin-left:.5em"><?php echo esc_html( number_format_i18n( (int) $row['p'] ) ); ?></span>
+								</td>
+								<td><?php echo esc_html( number_format_i18n( (int) $row['f'] ) ); ?></td>
+							</tr>
+						<?php endforeach; ?>
+						</tbody>
+					</table>
+				<?php endif; ?>
+			<?php endif; ?>
+
 			<h2 style="margin-top:2em"><?php esc_html_e( 'Warn me next time', 'past-due-actions' ); ?></h2>
 			<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" style="max-width:44em">
 				<input type="hidden" name="action" value="pda_settings">
 				<?php wp_nonce_field( self::NONCE ); ?>
 				<table class="form-table" role="presentation">
 					<tr>
-						<th scope="row"><?php esc_html_e( 'Daily check', 'past-due-actions' ); ?></th>
+						<th scope="row"><?php
+							echo esc_html(
+								'hourly' === PDA_Alerts::frequency()
+									? __( 'Hourly check', 'past-due-actions' )
+									: __( 'Daily check', 'past-due-actions' )
+							);
+						?></th>
 						<td><label>
 							<input type="checkbox" name="enabled" value="1" <?php checked( PDA_Alerts::enabled() ); ?>>
 							<?php esc_html_e( 'Email me if the backlog gets large', 'past-due-actions' ); ?>
 						</label>
-						<p class="description"><?php esc_html_e( 'At most one email a day. Stuck actions fail silently, so without this nobody finds out until a customer complains.', 'past-due-actions' ); ?></p></td>
+						<p class="description"><?php
+							echo esc_html(
+								'hourly' === PDA_Alerts::frequency()
+									? __( 'At most one email an hour. Stuck actions fail silently, so without this nobody finds out until a customer complains.', 'past-due-actions' )
+									: __( 'At most one email a day. Stuck actions fail silently, so without this nobody finds out until a customer complains.', 'past-due-actions' )
+							);
+						?></p></td>
 					</tr>
 					<tr>
 						<th scope="row"><label for="pda-threshold"><?php esc_html_e( 'Warn above', 'past-due-actions' ); ?></label></th>
@@ -312,9 +432,84 @@ class PDA_Admin {
 							value="<?php echo esc_attr( (string) get_option( PDA_Alerts::OPT_EMAIL, '' ) ); ?>"
 							placeholder="<?php echo esc_attr( (string) get_option( 'admin_email' ) ); ?>"></td>
 					</tr>
+					<tr>
+						<th scope="row"><label for="pda-frequency"><?php esc_html_e( 'Check every', 'past-due-actions' ); ?></label></th>
+						<td>
+							<select id="pda-frequency" name="frequency" <?php disabled( ! PDA_License::is_pro() ); ?>>
+								<option value="daily" <?php selected( 'hourly' !== PDA_Alerts::frequency() ); ?>><?php esc_html_e( 'Day', 'past-due-actions' ); ?></option>
+								<option value="hourly" <?php selected( 'hourly' === PDA_Alerts::frequency() ); ?>><?php esc_html_e( 'Hour', 'past-due-actions' ); ?></option>
+							</select>
+							<?php if ( ! PDA_License::is_pro() ) : ?>
+								<?php echo wp_kses_post( PDA_License::nudge( __( 'Hourly checks are part of', 'past-due-actions' ) ) ); ?>
+							<?php else : ?>
+								<p class="description"><?php esc_html_e( 'A daily check can leave a broken queue unnoticed for most of a day. Hourly narrows that to an hour.', 'past-due-actions' ); ?></p>
+							<?php endif; ?>
+						</td>
+					</tr>
+					<tr>
+						<th scope="row"><label for="pda-webhook"><?php esc_html_e( 'Also send to', 'past-due-actions' ); ?></label></th>
+						<td>
+							<input type="url" id="pda-webhook" name="webhook" class="regular-text code"
+								value="<?php echo esc_attr( PDA_Webhooks::url() ); ?>"
+								placeholder="https://hooks.slack.com/services/..."
+								<?php disabled( ! PDA_License::is_pro() ); ?>>
+							<?php if ( ! PDA_License::is_pro() ) : ?>
+								<?php echo wp_kses_post( PDA_License::nudge( __( 'Slack and webhook alerts are part of', 'past-due-actions' ) ) ); ?>
+							<?php else : ?>
+								<p class="description"><?php esc_html_e( 'A Slack incoming webhook gets a readable message; any other https endpoint gets JSON with the same numbers in named fields.', 'past-due-actions' ); ?></p>
+							<?php endif; ?>
+						</td>
+					</tr>
+					<tr>
+						<th scope="row"><?php esc_html_e( 'Retry on its own', 'past-due-actions' ); ?></th>
+						<td>
+							<label>
+								<input type="checkbox" name="autorepair" value="1"
+									<?php checked( PDA_Repair::auto_enabled() ); ?>
+									<?php disabled( ! PDA_License::is_pro() ); ?>>
+								<?php esc_html_e( 'Re-queue failed actions automatically at each check', 'past-due-actions' ); ?>
+							</label>
+							<?php if ( ! PDA_License::is_pro() ) : ?>
+								<br><?php echo wp_kses_post( PDA_License::nudge( __( 'Unattended retrying is part of', 'past-due-actions' ) ) ); ?>
+							<?php else : ?>
+								<p class="description">
+									<?php
+									printf(
+										/* translators: 1: actions per hook, 2: number of hooks */
+										esc_html__( 'Only failed actions are retried, never cancelled or deleted — the same thing the button does. At most %1$d actions across %2$d hooks per run, so a hook that is failing for a real reason cannot be retried forever.', 'past-due-actions' ),
+										(int) PDA_Repair::MAX_PER_HOOK,
+										(int) PDA_Repair::MAX_HOOKS
+									);
+									?>
+								</p>
+								<?php $last = PDA_Repair::last_auto(); ?>
+								<?php if ( $last ) : ?>
+									<p class="description">
+										<?php
+										printf(
+											/* translators: 1: number re-queued, 2: human readable duration */
+											esc_html__( 'Last run re-queued %1$s actions, %2$s ago.', 'past-due-actions' ),
+											esc_html( number_format_i18n( (int) $last['requeued'] ) ),
+											esc_html( human_time_diff( (int) $last['t'] ) )
+										);
+										?>
+									</p>
+								<?php endif; ?>
+							<?php endif; ?>
+						</td>
+					</tr>
 				</table>
 				<?php submit_button( __( 'Save', 'past-due-actions' ) ); ?>
 			</form>
+
+			<?php if ( PDA_License::is_pro() && '' !== PDA_Webhooks::url() ) : ?>
+				<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" style="margin-top:-1em">
+					<input type="hidden" name="action" value="pda_test_webhook">
+					<?php wp_nonce_field( self::NONCE ); ?>
+					<button class="button"><?php esc_html_e( 'Send a test to the webhook', 'past-due-actions' ); ?></button>
+					<p class="description"><?php esc_html_e( 'Posts the real payload with the current numbers, so a wrong URL or a revoked token shows up now rather than at 3am.', 'past-due-actions' ); ?></p>
+				</form>
+			<?php endif; ?>
 		</div>
 		<?php
 	}

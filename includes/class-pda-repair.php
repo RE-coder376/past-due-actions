@@ -18,6 +18,17 @@ defined( 'ABSPATH' ) || exit;
  */
 class PDA_Repair {
 
+	const OPT_AUTO = 'pda_autorepair';
+	const OPT_LAST = 'pda_autorepair_last';
+
+	/**
+	 * Ceilings for the unattended pass. Small on purpose: this runs with nobody
+	 * watching, and a runaway retry loop on a broken hook is worse than a
+	 * backlog that waits for a human.
+	 */
+	const MAX_HOOKS    = 5;
+	const MAX_PER_HOOK = 100;
+
 	/**
 	 * Ask Action Scheduler to process a batch immediately.
 	 *
@@ -149,6 +160,80 @@ class PDA_Repair {
 
 		PDA_Scanner::flush();
 		return (int) $updated;
+	}
+
+	/**
+	 * Retry failed actions without anybody clicking anything.
+	 *
+	 * Deliberately narrow. This only ever re-queues actions that are already
+	 * marked failed - the same thing the button does - and it never cancels or
+	 * deletes. An unattended process that removed a store's pending renewals
+	 * would be indefensible, so the destructive half of this class stays behind
+	 * a human and a nonce.
+	 *
+	 * Bounded twice over: at most MAX_HOOKS hooks per run and MAX_PER_HOOK
+	 * actions within each. A hook that fails for a real reason - a dead API
+	 * key, a missing product - would otherwise be retried forever, so the
+	 * ceiling matters more than the throughput.
+	 *
+	 * @return array{hooks:int,requeued:int,detail:array<string,int>}
+	 */
+	public static function auto() {
+		$result = array(
+			'hooks'    => 0,
+			'requeued' => 0,
+			'detail'   => array(),
+		);
+
+		if ( ! PDA_Scanner::tables_exist() ) {
+			return $result;
+		}
+
+		foreach ( PDA_Scanner::past_due_by_hook( self::MAX_HOOKS ) as $row ) {
+			if ( empty( $row['failures'] ) ) {
+				continue;
+			}
+
+			$moved = self::retry_hook( $row['hook'], self::MAX_PER_HOOK );
+			if ( $moved > 0 ) {
+				++$result['hooks'];
+				$result['requeued']            += $moved;
+				$result['detail'][ $row['hook'] ] = $moved;
+			}
+		}
+
+		if ( $result['requeued'] > 0 ) {
+			update_option(
+				self::OPT_LAST,
+				array(
+					't'        => time(),
+					'requeued' => $result['requeued'],
+					'detail'   => $result['detail'],
+				),
+				false
+			);
+		}
+
+		return $result;
+	}
+
+	/**
+	 * What the last unattended pass did, for the screen.
+	 *
+	 * @return array{t:int,requeued:int,detail:array<string,int>}|null
+	 */
+	public static function last_auto() {
+		$last = get_option( self::OPT_LAST, null );
+		return is_array( $last ) && isset( $last['t'] ) ? $last : null;
+	}
+
+	/**
+	 * Is unattended retrying switched on? Pro only.
+	 *
+	 * @return bool
+	 */
+	public static function auto_enabled() {
+		return PDA_License::is_pro() && (bool) get_option( self::OPT_AUTO, 0 );
 	}
 
 	/**
