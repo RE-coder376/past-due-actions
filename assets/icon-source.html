@@ -1,0 +1,52 @@
+<title>Past-Due Actions icon</title>
+<style>
+  html, body { margin: 0; padding: 0; background: transparent; }
+  .icon { width: 512px; height: 512px; }
+</style>
+
+<!--
+  The plugin is about a clock that has gone past its time, so the icon is a
+  clock face with the hands stopped after the hour and a backlog stacking up
+  behind it. Read at 64px in a plugin list it still resolves as "clock, and
+  something is wrong with it", which is the whole product in one glyph.
+-->
+<svg class="icon" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Past-Due Actions">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2b3440"/>
+      <stop offset="1" stop-color="#1d2327"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="512" height="512" rx="104" fill="url(#bg)"/>
+
+  <!-- The backlog: bars queued up behind the dial, tallest nearest, so the
+       shape reads as work piling rather than as decoration. -->
+  <g fill="#b32d2e" opacity=".92">
+    <rect x="70"  y="330" width="34" height="112" rx="10"/>
+    <rect x="118" y="296" width="34" height="146" rx="10"/>
+  </g>
+  <g fill="#b32d2e" opacity=".45">
+    <rect x="360" y="296" width="34" height="146" rx="10"/>
+    <rect x="408" y="330" width="34" height="112" rx="10"/>
+  </g>
+
+  <!-- Dial -->
+  <circle cx="256" cy="228" r="146" fill="none" stroke="#f0f0f1" stroke-width="26"/>
+  <circle cx="256" cy="228" r="146" fill="#1d2327"/>
+
+  <!-- Ticks at 12, 3, 6, 9 only: more than that turns to mush at small sizes. -->
+  <g stroke="#f0f0f1" stroke-width="14" stroke-linecap="round" opacity=".55">
+    <line x1="256" y1="112" x2="256" y2="136"/>
+    <line x1="372" y1="228" x2="348" y2="228"/>
+    <line x1="256" y1="344" x2="256" y2="320"/>
+    <line x1="140" y1="228" x2="164" y2="228"/>
+  </g>
+
+  <!-- Hands stopped past the hour, in the same red as the backlog. -->
+  <g stroke="#e0484a" stroke-linecap="round">
+    <line x1="256" y1="228" x2="256" y2="140" stroke-width="22"/>
+    <line x1="256" y1="228" x2="330" y2="272" stroke-width="18"/>
+  </g>
+  <circle cx="256" cy="228" r="17" fill="#f0f0f1"/>
+</svg>
