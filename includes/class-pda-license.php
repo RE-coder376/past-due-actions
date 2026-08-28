@@ -22,7 +22,12 @@ defined( 'ABSPATH' ) || exit;
 class PDA_License {
 
 	/**
-	 * Where the paid version is sold.
+	 * Fallback for where the paid version is sold.
+	 *
+	 * Used only when the licensing SDK is absent - during tests, and in any
+	 * build that ships without it. When the SDK is loaded, buy_url() returns
+	 * its in-dashboard pricing page instead, so the upgrade happens inside
+	 * WordPress rather than by sending somebody out to a website.
 	 */
 	const BUY_URL = 'https://re-coder376.github.io/past-due-actions/#pro';
 
@@ -88,10 +93,43 @@ class PDA_License {
 	 */
 	public static function nudge( $what ) {
 		return sprintf(
-			'<span class="description">%s <a href="%s" target="_blank" rel="noopener">%s</a></span>',
+			'<span class="description">%s <a href="%s"%s>%s</a></span>',
 			esc_html( $what ),
-			esc_url( self::BUY_URL ),
+			esc_url( self::buy_url() ),
+			self::has_sdk() ? '' : ' target="_blank" rel="noopener"',
 			esc_html__( 'Past-Due Actions Pro', 'past-due-actions' )
 		);
+	}
+
+	/**
+	 * Is the licensing SDK loaded?
+	 *
+	 * @return bool
+	 */
+	private static function has_sdk() {
+		return function_exists( 'pda_fs' ) && is_object( pda_fs() );
+	}
+
+	/**
+	 * Where to send somebody who wants the paid version.
+	 *
+	 * Prefers the SDK's own pricing screen: it opens inside wp-admin, already
+	 * knows which site is asking, and carries the licence back automatically.
+	 * The public page is the fallback for builds without the SDK.
+	 *
+	 * @return string
+	 */
+	public static function buy_url() {
+		if ( self::has_sdk() ) {
+			$fs = pda_fs();
+			if ( method_exists( $fs, 'get_upgrade_url' ) ) {
+				$url = $fs->get_upgrade_url();
+				if ( is_string( $url ) && '' !== $url ) {
+					return $url;
+				}
+			}
+		}
+
+		return self::BUY_URL;
 	}
 }

@@ -3,7 +3,7 @@
  * Plugin Name:       Past-Due Actions — Action Scheduler Monitor
  * Plugin URI:        https://wordpress.org/plugins/past-due-actions/
  * Description:       Find out why Action Scheduler has past-due actions, which plugin is responsible, and fix it. Diagnoses the cause instead of just deleting rows.
- * Version:           1.1.0
+ * Version:           1.2.0
  * Requires at least: 7.0
  * Requires PHP:      7.4
  * Author:            Hamza Naimat
@@ -34,9 +34,66 @@
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'PDA_VERSION', '1.1.0' );
+define( 'PDA_VERSION', '1.2.0' );
 define( 'PDA_FILE', __FILE__ );
 define( 'PDA_PATH', plugin_dir_path( __FILE__ ) );
+
+/**
+ * Licensing, through Freemius.
+ *
+ * Loaded before anything else because the SDK has to hook in ahead of the
+ * admin menu it attaches itself to. Everything downstream asks
+ * PDA_License::is_pro() rather than touching this - the vendor stays in one
+ * file, so swapping it later is a rewrite of two functions and nothing else.
+ *
+ * anonymous_mode is on deliberately. A plugin installed by somebody whose
+ * store has just stopped processing orders should not open with a request for
+ * their email address; they can skip the opt-in and get straight to the
+ * diagnosis. Consent that has to be extracted from someone mid-outage is not
+ * worth having.
+ */
+if ( ! function_exists( 'pda_fs' ) ) {
+	/**
+	 * The Freemius instance.
+	 *
+	 * @return Freemius
+	 */
+	function pda_fs() {
+		global $pda_fs;
+
+		if ( ! isset( $pda_fs ) ) {
+			require_once PDA_PATH . 'freemius/start.php';
+
+			$pda_fs = fs_dynamic_init(
+				array(
+					'id'                  => '38014',
+					'slug'                => 'past-due-actions',
+					'type'                => 'plugin',
+					'public_key'          => 'pk_8fe65bbc94721ebf1ba0286f12e92',
+					'is_premium'          => true,
+					'premium_suffix'      => 'Pro',
+					'has_premium_version' => true,
+					'has_addons'          => false,
+					'has_paid_plans'      => true,
+					'menu'                => array(
+						'slug'       => 'past-due-actions',
+						'parent'     => array( 'slug' => 'tools.php' ),
+						'first-path' => 'tools.php?page=past-due-actions',
+						'contact'    => false,
+						'support'    => false,
+					),
+					'anonymous_mode'      => true,
+					'is_org_compliant'    => true,
+				)
+			);
+		}
+
+		return $pda_fs;
+	}
+
+	pda_fs();
+	do_action( 'pda_fs_loaded' );
+}
 
 /**
  * Boot only when Action Scheduler is actually present.

@@ -335,7 +335,7 @@ class PDA_Admin {
 			<?php if ( ! PDA_License::is_pro() ) : ?>
 				<p class="description" style="max-width:44em">
 					<?php esc_html_e( 'A single number cannot tell you whether a queue is filling up or draining. Recording the backlog over time, and alerting to Slack or a webhook, are part of', 'past-due-actions' ); ?>
-					<a href="<?php echo esc_url( PDA_License::BUY_URL ); ?>" target="_blank" rel="noopener"><?php esc_html_e( 'Past-Due Actions Pro', 'past-due-actions' ); ?></a>.
+					<a href="<?php echo esc_url( PDA_License::buy_url() ); ?>" target="_blank" rel="noopener"><?php esc_html_e( 'Past-Due Actions Pro', 'past-due-actions' ); ?></a>.
 				</p>
 			<?php else : ?>
 				<?php

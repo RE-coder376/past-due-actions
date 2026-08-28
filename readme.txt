@@ -4,7 +4,7 @@ Tags: action scheduler, past due actions, scheduled actions, woocommerce cron, w
 Requires at least: 7.0
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 1.1.0
+Stable tag: 1.2.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -104,6 +104,11 @@ No. Action Scheduler ships inside several plugins, and this works with any of th
 3. Daily warning settings
 
 == Changelog ==
+
+= 1.2.0 =
+
+* Licensing and checkout, so the Pro features added in 1.1.0 can actually be bought. The upgrade link now opens inside wp-admin rather than sending you to a website.
+* The opt-in is skippable. A plugin installed because a store stopped processing orders should not open by asking for your email address.
 
 = 1.1.0 =
 
