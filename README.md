@@ -1,4 +1,4 @@
-# Past-Due Actions — Action Scheduler Monitor
+# QueueWatch Past-Due Monitor for Action Scheduler
 
 A WordPress plugin that answers the question WooCommerce raises and then leaves alone:
 
