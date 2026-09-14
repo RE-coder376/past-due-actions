@@ -1,20 +1,6 @@
-<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>"Past-due actions found; something may be wrong" — what the Action Scheduler warning means and how to fix it</title>
 <meta name="description" content="WooCommerce says past-due actions were found and nothing else. Here is what the warning means, what it breaks, the six causes, and how to tell which one you have.">
-<link rel="canonical" href="https://re-coder376.github.io/past-due-actions/">
-<meta property="og:type" content="article">
-<meta property="og:title" content="&quot;Past-due actions found; something may be wrong&quot; — what the Action Scheduler warning means and how to fix it">
-<meta property="og:description" content="WooCommerce says past-due actions were found and nothing else. Here is what the warning means, what it breaks, the six causes, and how to tell which one you have.">
-<meta property="og:url" content="https://re-coder376.github.io/past-due-actions/">
-<meta name="twitter:card" content="summary">
-<meta name="twitter:title" content="&quot;Past-due actions found; something may be wrong&quot; — what the Action Scheduler warning means and how to fix it">
-<meta name="twitter:description" content="WooCommerce says past-due actions were found and nothing else. Here is what the warning means, what it breaks, the six causes, and how to tell which one you have.">
-<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 16 16%22><text y=%2213%22 font-size=%2213%22>&#9201;</text></svg>">
-<script type="application/ld+json">{"@context":"https://schema.org","@type":"FAQPage","mainEntity":[{"@type":"Question","name":"My warning says a different number — 6, 77, 263, 10 million. Does that change anything?","acceptedAnswer":{"@type":"Answer","text":"No. The number is how many jobs are waiting, not what went wrong. The same six causes apply at every size. Only cause 6 depends on the number being genuinely enormous."}},{"@type":"Question","name":"My scheduled actions are pending but never run. Is that the same problem?","acceptedAnswer":{"@type":"Answer","text":"Yes — that’s the same thing described from the other side. Past due actions all sit in the list as pending, because “past due” isn’t a status Action Scheduler stores. If your scheduled actions are not running and the count keeps climbing, work through the six causes above: the queue isn’t being processed."}},{"@type":"Question","name":"WooCommerce cron isn’t working at all. Where do I start?","acceptedAnswer":{"@type":"Answer","text":"With the 60-second test above. Trigger the queue by hand once: if the work happens, WooCommerce cron is fine and nothing is starting it — cause 1 or 2. If nothing happens, the jobs themselves are failing — cause 3. Almost every “WooCommerce cron not working” report resolves to one of those three."}},{"@type":"Question","name":"What’s the difference between past-due actions and failed actions?","acceptedAnswer":{"@type":"Answer","text":"A past-due action was never attempted — its time came and nothing picked it up. A failed action was attempted and threw an error. They look similar in the admin and have opposite fixes: past-due means fix your scheduling, failed means fix the plugin whose job is breaking. Getting this the wrong way round is the most common wasted afternoon here."}},{"@type":"Question","name":"Can I just delete the past-due actions and move on?","acceptedAnswer":{"@type":"Answer","text":"You can, and the warning will come back within days because you removed the symptom. Worse, those rows are real work — pending subscription renewals and unsent emails — so deleting them means those things never happen at all."}},{"@type":"Question","name":"Will one of the “Action Scheduler cleaner” plugins fix this?","acceptedAnswer":{"@type":"Answer","text":"No. Those delete completed actions to shrink your database, which is useful housekeeping and does nothing for actions that are stuck. If you’re here because of the past-due warning, a cleaner won’t help."}},{"@type":"Question","name":"I don’t use WooCommerce. Why am I seeing this?","acceptedAnswer":{"@type":"Answer","text":"Action Scheduler is a shared library that ships inside many plugins — WPForms, MailPoet, Jetpack, Easy Digital Downloads and others. Any of them can produce this warning."}},{"@type":"Question","name":"The count went down on its own. Am I fine?","acceptedAnswer":{"@type":"Answer","text":"Probably a temporary spike — an import, a bulk update, a traffic burst. Check again in a day. If it climbs back, you have one of the six causes and it just hasn’t become obvious yet."}},{"@type":"Question","name":"Is it safe to run wp-cron.php manually?","acceptedAnswer":{"@type":"Answer","text":"Yes. It does exactly what WordPress does on its own schedule — processes whatever is due right now. It’s the safest first diagnostic there is."}}]}</script>
+
 <style>
   :root {
     --ground:      #FBFBFD;
@@ -341,6 +327,10 @@
     letter-spacing: -0.02em;
   }
   .tier .price span { font-size: var(--step--1); font-weight: 500; color: var(--muted); }
+  a.tier { color: var(--ink); text-decoration: none; transition: border-color .15s, background .15s; }
+  a.tier:hover { border-color: var(--accent); background: var(--accent-soft); }
+  .tier .buy { margin-top: 0.35rem; font-size: var(--step--1); font-weight: 600; color: var(--accent); }
+  .tier-note { margin-top: 0.6rem; font-size: var(--step--1); color: var(--muted); }
 
   .split th:first-child { width: 45%; }
   .split td.yes { color: var(--ok); font-weight: 600; }
@@ -397,8 +387,7 @@
     * { transition: none !important; animation: none !important; }
   }
 </style>
-</head>
-<body>
+
 <div class="wrap">
 
   <header class="hero">
@@ -417,7 +406,7 @@
     </p>
     <div class="shortcut">
       <p>
-        <strong>In a hurry?</strong> The free <strong>Past-Due Actions</strong> plugin runs
+        <strong>In a hurry?</strong> The free <strong>StallRadar Past-Due Monitor</strong> plugin runs
         every check on this page and names your cause in one screen. Or keep reading and
         do it by hand — everything it checks is written out below.
       </p>
@@ -722,7 +711,7 @@ LIMIT 10000;</code></pre>
     <p class="eyebrow">The shortcut</p>
     <h2>Or have all six checked for you</h2>
     <p>
-      <strong>Past-Due Actions</strong> is a free WordPress plugin that runs every check on
+      <strong>StallRadar Past-Due Monitor</strong> is a free WordPress plugin that runs every check on
       this page and tells you which cause you have, in one screen.
     </p>
     <ul class="checklist">
@@ -732,7 +721,7 @@ LIMIT 10000;</code></pre>
       <li>Run the queue, retry failures, or cancel a backlog — cancelling marks rows, never deletes them</li>
       <li>Emails you once a day if the backlog comes back</li>
     </ul>
-    <a class="btn" href="https://github.com/RE-coder376/past-due-actions/raw/main/dist/past-due-actions-free.zip" id="install-link">Get the free plugin</a>
+    <a class="btn" href="https://wordpress.org/plugins/stallradar-past-due-monitor/" id="install-link">Get the free plugin</a>
     <p style="font-size: var(--step--1); color: var(--muted);">
       Free and open source, GPL-2.0. Works with any plugin that uses Action Scheduler —
       WooCommerce, WPForms, MailPoet, Jetpack, Easy Digital Downloads.
@@ -767,23 +756,28 @@ LIMIT 10000;</code></pre>
     </div>
 
     <div class="tiers">
-      <div class="tier">
+      <a class="tier" href="https://checkout.freemius.com/plugin/38014/plan/63264/licenses/1/">
         <span class="who">1 site</span>
         <span class="price">$39<span> / year</span></span>
-      </div>
-      <div class="tier">
+        <span class="buy">Buy Pro &rarr;</span>
+      </a>
+      <a class="tier" href="https://checkout.freemius.com/plugin/38014/plan/63264/licenses/5/">
         <span class="who">5 sites</span>
         <span class="price">$89<span> / year</span></span>
-      </div>
-      <div class="tier">
+        <span class="buy">Buy Pro &rarr;</span>
+      </a>
+      <a class="tier" href="https://checkout.freemius.com/plugin/38014/plan/63264/licenses/10/">
         <span class="who">10 sites</span>
         <span class="price">$129<span> / year</span></span>
-      </div>
-      <div class="tier">
+        <span class="buy">Buy Pro &rarr;</span>
+      </a>
+      <a class="tier" href="https://checkout.freemius.com/plugin/38014/plan/63264/licenses/20/">
         <span class="who">20 sites</span>
         <span class="price">$199<span> / year</span></span>
-      </div>
+        <span class="buy">Buy Pro &rarr;</span>
+      </a>
     </div>
+    <p class="tier-note">Secure checkout by Freemius. 14-day money-back guarantee. The free plugin keeps working either way.</p>
 
     <p style="font-size: var(--step--1); color: var(--muted);">
       If you run one store and this was a one-off, the free version is genuinely all you
@@ -886,7 +880,7 @@ LIMIT 10000;</code></pre>
 
   <footer>
     <p>
-      Written by Hamza Naimat, who builds <a href="https://github.com/RE-coder376/past-due-actions">Past-Due Actions</a>.
+      Written by Hamza Naimat, who builds <a href="https://wordpress.org/plugins/stallradar-past-due-monitor/">StallRadar Past-Due Monitor</a>.
       Corrections welcome — if something here didn’t match what you saw on your store, that’s
       worth knowing.
     </p>
@@ -894,5 +888,3 @@ LIMIT 10000;</code></pre>
   </footer>
 
 </div>
-</body>
-</html>
